@@ -1,8 +1,7 @@
-<!-- HTML otimizado para uso dentro de README.md no GitHub -->
-<!-- GitHub não permite CSS externo, classes complexas ou estilização avançada. Este HTML está simplificado e compatível com o GitHub Markdown. -->
 
-<h1 align="center">Growtwitter API</h1>
-<p align="center"><strong>API RESTful inspirada em funcionalidades principais de redes sociais</strong></p>
+
+<h1 align="center">Growtwitter API 🐦</h1>
+<p align="center"><strong>API RESTful inspirada em funcionalidades principais do Twitter, como autenticação, tweets, sistema de seguidores, likes e comentários.</strong></p>
 
 <hr />
 
