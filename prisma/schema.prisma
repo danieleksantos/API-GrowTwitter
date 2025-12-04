@@ -1,0 +1,75 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") 
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Modelo User
+model User {
+  id        String   @id @default(uuid()) 
+  name      String                     
+  username  String   @unique             
+  password  String                     
+  imageUrl  String   @default("https://default-image.png") 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  tweets    Tweet[] 
+  likes     Like[] 
+  
+  comments  Comment[]
+  
+  // Relações Follows
+  following Follows[] @relation("FollowsBeingFollowed") 
+  followers Follows[] @relation("FollowsFollowedBy") 
+}
+
+// Modelo Tweet
+model Tweet {
+  id        String   @id @default(uuid())
+  content   String   @db.VarChar(280) 
+  createdAt DateTime @default(now())
+  
+  userId    String  
+  user      User     @relation(fields: [userId], references: [id])
+
+  likes     Like[] 
+  
+  comments  Comment[]
+}
+
+model Follows {
+  followerId String
+  followingId String 
+  
+  follower User @relation("FollowsFollowedBy", fields: [followerId], references: [id])
+  following User @relation("FollowsBeingFollowed", fields: [followingId], references: [id])
+
+  @@id([followerId, followingId])
+}
+
+model Like {
+  userId    String
+  tweetId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  tweet Tweet @relation(fields: [tweetId], references: [id])
+
+  @@id([userId, tweetId])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String   @db.VarChar(280) 
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  tweetId   String
+  tweet     Tweet    @relation(fields: [tweetId], references: [id])
+}
