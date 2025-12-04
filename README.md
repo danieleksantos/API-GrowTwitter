@@ -1,6 +1,6 @@
 # Growtwitter API
 
-Uma **API RESTful completa e robusta**, inspirada nas funcionalidades principais de uma rede social — incluindo autenticação, tweets, sistema de seguidores, likes e comentários.
+Uma **API RESTful completa**, inspirada nas funcionalidades principais do Tweeter, incluindo autenticação, tweets, sistema de seguidores, likes e comentários.
 
 ---
 
