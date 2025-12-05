@@ -5,6 +5,7 @@ import { prismaClient } from '../database/prismaClient.js'
 
 export async function getUserProfile(req: Request, res: Response): Promise<Response> {
     const { username } = req.params
+    const currentUserId = req.user?.id 
 
     try {
         const user = await prismaClient.user.findUnique({
@@ -22,25 +23,28 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
                     include: {
                         user: {
                             select: {
-                                id: true,
-                                username: true,
-                                name: true,
-                                imageUrl: true,
+                                id: true, username: true, name: true, imageUrl: true,
                             },
                         },
+                        likes: { 
+                            where: { userId: currentUserId },
+                            select: { userId: true } 
+                        },
                         _count: { 
-                            select: { 
-                                likes: true,
-                                comments: true 
-                            } 
+                            select: { likes: true, comments: true } 
                         }
                     },
                 },
                 
+                followers: {
+                    where: { followerId: currentUserId },
+                    select: { followerId: true }
+                },
+
                 _count: {
                     select: {
-                        followers: true,
-                        following: true,
+                        followers: true, 
+                        following: true, 
                     },
                 },
             },
@@ -52,10 +56,39 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
                 message: 'Usuário não encontrado.',
             })
         }
+        
+        const mappedTweets = user.tweets.map(tweet => {
+            const isLikedByMe = tweet.likes.length > 0;
+            const { likes, ...restOfTweet } = tweet;
+
+            return {
+                ...restOfTweet,
+                isLikedByMe,
+                likesCount: restOfTweet._count.likes,
+                repliesCount: restOfTweet._count.comments,
+                _count: undefined,
+            }
+        })
+        
+        const isFollowing = user.followers.length > 0;
+
+        const responseData = {
+            id: user.id,
+            name: user.name,
+            username: user.username,
+            imageUrl: user.imageUrl,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+            isFollowing: user.id !== currentUserId ? isFollowing : undefined,
+            followersCount: user._count.followers,
+            followingCount: user._count.following,
+            tweets: mappedTweets,
+        }
+
 
         return res.status(200).json({
             success: true,
-            data: user,
+            data: responseData,
         })
 
     } catch (error) {
@@ -86,9 +119,9 @@ export async function followUser(req: Request, res: Response): Promise<Response>
 
         if (!targetUser) {
              return res.status(404).json({
-                success: false,
-                message: 'Usuário que você está tentando seguir não existe.',
-            })
+                 success: false,
+                 message: 'Usuário que você está tentando seguir não existe.',
+             })
         }
 
         const existingFollow = await prismaClient.follows.findUnique({
@@ -158,9 +191,9 @@ export async function unfollowUser(req: Request, res: Response): Promise<Respons
     } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'P2025') {
              return res.status(404).json({
-                success: false,
-                message: 'Relação de follow não encontrada (você não segue este usuário).',
-            })
+                 success: false,
+                 message: 'Relação de follow não encontrada (você não segue este usuário).',
+             })
         }
         
         console.error('Erro ao deixar de seguir usuário:', error)
@@ -189,10 +222,19 @@ export async function listUsers(req: Request, res: Response): Promise<Response> 
                 createdAt: 'desc',
             }
         })
+        
+        const mappedUsers = users.map(user => ({
+            id: user.id,
+            name: user.name,
+            username: user.username,
+            imageUrl: user.imageUrl,
+            createdAt: user.createdAt,
+            followersCount: user._count.followers,
+        }))
 
         return res.status(200).json({
             success: true,
-            data: users,
+            data: mappedUsers,
         })
     } catch (error) {
         console.error('Erro ao listar usuários:', error)

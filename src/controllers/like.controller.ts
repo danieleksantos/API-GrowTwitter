@@ -19,10 +19,7 @@ export async function likeTweet(req: Request, res: Response): Promise<Response> 
 
         const existingLike = await prismaClient.like.findUnique({
             where: {
-                userId_tweetId: {
-                    userId,
-                    tweetId,
-                },
+                userId_tweetId: { userId, tweetId },
             },
         })
 
@@ -34,10 +31,7 @@ export async function likeTweet(req: Request, res: Response): Promise<Response> 
         }
 
         const newLike = await prismaClient.like.create({
-            data: {
-                userId,
-                tweetId,
-            },
+            data: { userId, tweetId },
         })
 
         return res.status(201).json({
@@ -66,10 +60,7 @@ export async function unlikeTweet(req: Request, res: Response): Promise<Response
     try {
         const deletedLike = await prismaClient.like.delete({
             where: {
-                userId_tweetId: {
-                    userId,
-                    tweetId,
-                },
+                userId_tweetId: { userId, tweetId },
             },
         })
 
@@ -80,7 +71,7 @@ export async function unlikeTweet(req: Request, res: Response): Promise<Response
         })
     } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'P2025') {
-             return res.status(404).json({
+            return res.status(404).json({
                 success: false,
                 message: 'Curtida não encontrada. Você não curtiu este tweet.',
             })

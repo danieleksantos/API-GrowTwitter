@@ -1,4 +1,3 @@
-
 import { Request, Response } from 'express'
 import { prismaClient } from '../database/prismaClient.js'
 
@@ -55,7 +54,12 @@ export async function createTweet(req: Request, res: Response): Promise<Response
         return res.status(201).json({
             success: true,
             message: 'Tweet criado com sucesso!',
-            data: newTweet,
+            data: { 
+                ...newTweet, 
+                likesCount: newTweet._count.likes,
+                repliesCount: newTweet._count.comments,
+                isLikedByMe: false,
+            },
         })
     } catch (error) {
         console.error('Erro ao criar tweet:', error)
@@ -76,47 +80,47 @@ export async function getFeed(req: Request, res: Response): Promise<Response> {
 
     try {
         const followingRelations = await prismaClient.follows.findMany({
-            where: {
-                followerId: currentUserId,
-            },
-            select: {
-                followingId: true,
-            },
+            where: { followerId: currentUserId },
+            select: { followingId: true },
         })
 
         const followedUserIds = followingRelations.map(f => f.followingId)
         const userIdsToInclude = [currentUserId, ...followedUserIds] 
 
         const tweets = await prismaClient.tweet.findMany({
-            where: {
-                userId: {
-                    in: userIdsToInclude, 
-                },
-            },
+            where: { userId: { in: userIdsToInclude } },
             include: {
                 user: {
-                    select: {
-                        id: true,
-                        username: true,
-                        name: true,
-                        imageUrl: true,
-                    },
+                    select: { id: true, username: true, name: true, imageUrl: true },
+                },
+                likes: { 
+                    where: { userId: currentUserId },
+                    select: { userId: true } 
                 },
                 _count: { 
-                    select: { 
-                        likes: true,
-                        comments: true 
-                    } 
+                    select: { likes: true, comments: true } 
                 }
             },
-            orderBy: {
-                createdAt: 'desc',
-            },
+            orderBy: { createdAt: 'desc' },
+        })
+
+        const tweetsWithLikeStatus = tweets.map(tweet => {
+            const isLikedByMe = tweet.likes.length > 0;
+            
+            const { likes, ...restOfTweet } = tweet;
+
+            return {
+                ...restOfTweet,
+                isLikedByMe,
+                likesCount: restOfTweet._count.likes,
+                repliesCount: restOfTweet._count.comments,
+                _count: undefined, 
+            }
         })
 
         return res.status(200).json({
             success: true,
-            data: tweets,
+            data: tweetsWithLikeStatus, 
         })
     } catch (error) {
         console.error('Erro ao buscar o feed de tweets personalizado:', error)
@@ -150,9 +154,7 @@ export async function deleteTweet(req: Request, res: Response): Promise<Response
             return res.status(403).json({ success: false, message: 'Você só pode deletar seus próprios tweets.' })
         }
         
-        await prismaClient.tweet.delete({
-            where: { id: tweetId },
-        })
+        await prismaClient.tweet.delete({ where: { id: tweetId } })
 
         return res.status(200).json({
             success: true,
