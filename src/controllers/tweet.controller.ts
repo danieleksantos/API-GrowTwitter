@@ -73,22 +73,48 @@ export async function createTweet(req: Request, res: Response): Promise<Response
 
 export async function getFeed(req: Request, res: Response): Promise<Response> {
     const currentUserId = req.user?.id 
+    const { username } = req.query as { username?: string }; 
 
     if (!currentUserId) {
         return res.status(401).json({ message: "Usuário não autenticado." })
     }
 
+    let tweetFindManyOptions: any = {}; 
+    let totalTweetsCount: number | undefined; 
+
     try {
-        const followingRelations = await prismaClient.follows.findMany({
-            where: { followerId: currentUserId },
-            select: { followingId: true },
-        })
+        if (username) {
+            
+            const targetUser = await prismaClient.user.findUnique({
+                where: { username },
+                select: { id: true },
+            });
 
-        const followedUserIds = followingRelations.map(f => f.followingId)
-        const userIdsToInclude = [currentUserId, ...followedUserIds] 
+            if (!targetUser) {
+                return res.status(404).json({ success: false, message: "Usuário não encontrado." });
+            }
 
-        const tweets = await prismaClient.tweet.findMany({
-            where: { userId: { in: userIdsToInclude } },
+            totalTweetsCount = await prismaClient.tweet.count({
+                where: { userId: targetUser.id },
+            });
+
+            tweetFindManyOptions.where = { userId: targetUser.id };
+            
+        } else {
+            
+            const followingRelations = await prismaClient.follows.findMany({
+                where: { followerId: currentUserId },
+                select: { followingId: true },
+            })
+            
+            const followedUserIds = followingRelations.map(f => f.followingId)
+            const userIdsToInclude = [currentUserId, ...followedUserIds] 
+
+            tweetFindManyOptions.where = { userId: { in: userIdsToInclude } };
+        }
+
+        const tweets: any[] = await prismaClient.tweet.findMany({
+            ...tweetFindManyOptions, 
             include: {
                 user: {
                     select: { id: true, username: true, name: true, imageUrl: true },
@@ -104,7 +130,7 @@ export async function getFeed(req: Request, res: Response): Promise<Response> {
             orderBy: { createdAt: 'desc' },
         })
 
-        const tweetsWithLikeStatus = tweets.map(tweet => {
+        const tweetsWithLikeStatus = tweets.map((tweet: any) => { 
             const isLikedByMe = tweet.likes.length > 0;
             
             const { likes, ...restOfTweet } = tweet;
@@ -121,12 +147,13 @@ export async function getFeed(req: Request, res: Response): Promise<Response> {
         return res.status(200).json({
             success: true,
             data: tweetsWithLikeStatus, 
+            ...(totalTweetsCount !== undefined && { totalTweets: totalTweetsCount }),
         })
     } catch (error) {
-        console.error('Erro ao buscar o feed de tweets personalizado:', error)
+        console.error('Erro ao buscar tweets:', error)
         return res.status(500).json({
             success: false,
-            message: 'Erro interno do servidor ao carregar o feed.',
+            message: 'Erro interno do servidor ao carregar os tweets.',
         })
     }
 }
