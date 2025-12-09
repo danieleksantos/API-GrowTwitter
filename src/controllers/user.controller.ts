@@ -1,13 +1,16 @@
-
 import { Request, Response } from 'express'
 import { prismaClient } from '../database/prismaClient.js'
 
+// -------------------------------------------------------------------
+// 1. GET USER PROFILE
+// -------------------------------------------------------------------
 
 export async function getUserProfile(req: Request, res: Response): Promise<Response> {
     const { username } = req.params
     const currentUserId = req.user?.id 
 
     try {
+        // Passo 1: Buscar o perfil e os dados principais
         const user = await prismaClient.user.findUnique({
             where: { username },
             select: {
@@ -18,6 +21,16 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
                 createdAt: true,
                 updatedAt: true,
                 
+                // Inclui as contagens
+                _count: {
+                    select: {
+                        followers: true, 
+                        following: true, 
+                        tweets: true, // Contagem total de tweets
+                    },
+                },
+                
+                // Inclui tweets com informações para like/comentário
                 tweets: {
                     orderBy: { createdAt: 'desc' },
                     include: {
@@ -35,18 +48,6 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
                         }
                     },
                 },
-                
-                followers: {
-                    where: { followerId: currentUserId },
-                    select: { followerId: true }
-                },
-
-                _count: {
-                    select: {
-                        followers: true, 
-                        following: true, 
-                    },
-                },
             },
         })
 
@@ -57,21 +58,40 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
             })
         }
         
+        // Passo 2: Checagem de Follow (Resolvendo a persistência)
+        let isFollowing = false;
+        
+        // Só checamos se está seguindo se o usuário estiver logado e não for o próprio perfil
+        if (currentUserId && user.id !== currentUserId) {
+              const followRecord = await prismaClient.follows.findUnique({
+                  where: {
+                      followerId_followingId: {
+                          followerId: currentUserId,
+                          followingId: user.id, 
+                      },
+                  },
+              });
+              // Se encontrou o registro, isFollowing é true
+              isFollowing = !!followRecord; 
+        }
+
+        // Passo 3: Mapeamento dos Tweets
         const mappedTweets = user.tweets.map(tweet => {
             const isLikedByMe = tweet.likes.length > 0;
-            const { likes, ...restOfTweet } = tweet;
+            // Desestrutura os campos que não queremos expor no frontend e usa o _count
+            const { likes, _count, ...restOfTweet } = tweet as any; 
 
             return {
                 ...restOfTweet,
                 isLikedByMe,
-                likesCount: restOfTweet._count.likes,
-                repliesCount: restOfTweet._count.comments,
-                _count: undefined,
+                likesCount: _count.likes,
+                repliesCount: _count.comments,
+                _count: undefined, // Remove o objeto _count aninhado
             }
         })
         
-        const isFollowing = user.followers.length > 0;
 
+        // Passo 4: Construção da Resposta (⭐ AJUSTE AQUI: Inversão das Contagens de Follow)
         const responseData = {
             id: user.id,
             name: user.name,
@@ -79,12 +99,19 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
             imageUrl: user.imageUrl,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
-            isFollowing: user.id !== currentUserId ? isFollowing : undefined,
-            followersCount: user._count.followers,
-            followingCount: user._count.following,
+            
+            // Retorna o estado de follow (true/false)
+            isFollowing: user.id !== currentUserId ? isFollowing : undefined, 
+            
+            // ⭐ INVERSÃO: 
+            // followersCount (quem segue a página) recebe o que o Prisma chama de following
+            followersCount: user._count.following, 
+            // followingCount (quem a página segue) recebe o que o Prisma chama de followers
+            followingCount: user._count.followers,
+            
+            tweetsCount: user._count.tweets,
             tweets: mappedTweets,
         }
-
 
         return res.status(200).json({
             success: true,
@@ -100,15 +127,25 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
     }
 }
 
+// -------------------------------------------------------------------
+// 2. FOLLOW USER
+// -------------------------------------------------------------------
 
 export async function followUser(req: Request, res: Response): Promise<Response> {
     const followerId = req.user?.id
     const followingId = req.params.followingId
 
-    if (!followerId || followerId === followingId) {
+    if (!followerId) {
+        return res.status(401).json({
+            success: false,
+            message: 'Usuário não autenticado.',
+        })
+    }
+    
+    if (!followingId || followerId === followingId) {
         return res.status(400).json({
             success: false,
-            message: 'Não é possível seguir a si mesmo ou ID de seguidor inválido.',
+            message: 'ID do usuário alvo inválido ou tentativa de seguir a si mesmo.',
         })
     }
 
@@ -134,6 +171,7 @@ export async function followUser(req: Request, res: Response): Promise<Response>
         })
 
         if (existingFollow) {
+            // Retorna 409 Conflict se o recurso já existe
             return res.status(409).json({
                 success: false,
                 message: 'Você já segue este usuário.',
@@ -161,6 +199,9 @@ export async function followUser(req: Request, res: Response): Promise<Response>
     }
 }
 
+// -------------------------------------------------------------------
+// 3. UNFOLLOW USER
+// -------------------------------------------------------------------
 
 export async function unfollowUser(req: Request, res: Response): Promise<Response> {
     const followerId = req.user?.id
@@ -169,7 +210,14 @@ export async function unfollowUser(req: Request, res: Response): Promise<Respons
     if (!followerId) {
         return res.status(401).json({
             success: false,
-            message: 'ID de seguidor inválido.',
+            message: 'Usuário não autenticado.',
+        })
+    }
+
+    if (!followingId) {
+        return res.status(400).json({
+            success: false,
+            message: 'ID do usuário alvo inválido.',
         })
     }
 
@@ -189,11 +237,12 @@ export async function unfollowUser(req: Request, res: Response): Promise<Respons
             data: unfollow,
         })
     } catch (error) {
+        // Trata P2025 (registro não encontrado para deleção) como 404 Not Found
         if (error instanceof Error && 'code' in error && error.code === 'P2025') {
-             return res.status(404).json({
-                 success: false,
-                 message: 'Relação de follow não encontrada (você não segue este usuário).',
-             })
+            return res.status(404).json({
+                success: false,
+                message: 'Relação de follow não encontrada (você não segue este usuário).',
+            })
         }
         
         console.error('Erro ao deixar de seguir usuário:', error)
@@ -204,6 +253,9 @@ export async function unfollowUser(req: Request, res: Response): Promise<Respons
     }
 }
 
+// -------------------------------------------------------------------
+// 4. LIST USERS
+// -------------------------------------------------------------------
 
 export async function listUsers(req: Request, res: Response): Promise<Response> {
     try {
