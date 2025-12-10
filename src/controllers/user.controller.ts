@@ -1,16 +1,12 @@
+
 import { Request, Response } from 'express'
 import { prismaClient } from '../database/prismaClient.js'
-
-// -------------------------------------------------------------------
-// 1. GET USER PROFILE
-// -------------------------------------------------------------------
 
 export async function getUserProfile(req: Request, res: Response): Promise<Response> {
     const { username } = req.params
     const currentUserId = req.user?.id 
 
     try {
-        // Passo 1: Buscar o perfil e os dados principais
         const user = await prismaClient.user.findUnique({
             where: { username },
             select: {
@@ -21,16 +17,14 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
                 createdAt: true,
                 updatedAt: true,
                 
-                // Inclui as contagens
                 _count: {
                     select: {
                         followers: true, 
                         following: true, 
-                        tweets: true, // Contagem total de tweets
+                        tweets: true, 
                     },
                 },
                 
-                // Inclui tweets com informações para like/comentário
                 tweets: {
                     orderBy: { createdAt: 'desc' },
                     include: {
@@ -58,10 +52,8 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
             })
         }
         
-        // Passo 2: Checagem de Follow (Resolvendo a persistência)
         let isFollowing = false;
         
-        // Só checamos se está seguindo se o usuário estiver logado e não for o próprio perfil
         if (currentUserId && user.id !== currentUserId) {
               const followRecord = await prismaClient.follows.findUnique({
                   where: {
@@ -71,14 +63,11 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
                       },
                   },
               });
-              // Se encontrou o registro, isFollowing é true
               isFollowing = !!followRecord; 
         }
 
-        // Passo 3: Mapeamento dos Tweets
         const mappedTweets = user.tweets.map(tweet => {
             const isLikedByMe = tweet.likes.length > 0;
-            // Desestrutura os campos que não queremos expor no frontend e usa o _count
             const { likes, _count, ...restOfTweet } = tweet as any; 
 
             return {
@@ -86,12 +75,10 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
                 isLikedByMe,
                 likesCount: _count.likes,
                 repliesCount: _count.comments,
-                _count: undefined, // Remove o objeto _count aninhado
+                _count: undefined,
             }
         })
-        
 
-        // Passo 4: Construção da Resposta (⭐ AJUSTE AQUI: Inversão das Contagens de Follow)
         const responseData = {
             id: user.id,
             name: user.name,
@@ -100,14 +87,10 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
             
-            // Retorna o estado de follow (true/false)
             isFollowing: user.id !== currentUserId ? isFollowing : undefined, 
             
-            // ⭐ INVERSÃO: 
-            // followersCount (quem segue a página) recebe o que o Prisma chama de following
-            followersCount: user._count.following, 
-            // followingCount (quem a página segue) recebe o que o Prisma chama de followers
-            followingCount: user._count.followers,
+            followersCount: user._count.followers, 
+            followingCount: user._count.following,
             
             tweetsCount: user._count.tweets,
             tweets: mappedTweets,
@@ -127,9 +110,7 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
     }
 }
 
-// -------------------------------------------------------------------
-// 2. FOLLOW USER
-// -------------------------------------------------------------------
+// follow
 
 export async function followUser(req: Request, res: Response): Promise<Response> {
     const followerId = req.user?.id
@@ -171,7 +152,6 @@ export async function followUser(req: Request, res: Response): Promise<Response>
         })
 
         if (existingFollow) {
-            // Retorna 409 Conflict se o recurso já existe
             return res.status(409).json({
                 success: false,
                 message: 'Você já segue este usuário.',
@@ -199,10 +179,7 @@ export async function followUser(req: Request, res: Response): Promise<Response>
     }
 }
 
-// -------------------------------------------------------------------
-// 3. UNFOLLOW USER
-// -------------------------------------------------------------------
-
+// unfollow
 export async function unfollowUser(req: Request, res: Response): Promise<Response> {
     const followerId = req.user?.id
     const followingId = req.params.followingId
@@ -237,7 +214,6 @@ export async function unfollowUser(req: Request, res: Response): Promise<Respons
             data: unfollow,
         })
     } catch (error) {
-        // Trata P2025 (registro não encontrado para deleção) como 404 Not Found
         if (error instanceof Error && 'code' in error && error.code === 'P2025') {
             return res.status(404).json({
                 success: false,
@@ -253,25 +229,51 @@ export async function unfollowUser(req: Request, res: Response): Promise<Respons
     }
 }
 
-// -------------------------------------------------------------------
-// 4. LIST USERS
-// -------------------------------------------------------------------
-
+// list users
 export async function listUsers(req: Request, res: Response): Promise<Response> {
+    const currentUserId = req.user?.id
+    
+    const page = Number(req.query.page) || 1
+    const limit = 8
+    const skip = (page - 1) * limit
+
     try {
+        let followingIds = new Set<string>()
+
+        if (currentUserId) {
+            const myFollows = await prismaClient.follows.findMany({
+                where: { followerId: currentUserId },
+                select: { followingId: true }
+            })
+            followingIds = new Set(myFollows.map(f => f.followingId))
+        }
+
         const users = await prismaClient.user.findMany({
+            take: limit,
+            skip: skip,
+            where: {
+                ...(currentUserId ? { id: { not: currentUserId } } : {})
+            },
             select: {
                 id: true,
                 name: true,
                 username: true,
                 imageUrl: true,
                 createdAt: true,
+                tweets: {
+                    take: 1,
+                    orderBy: { createdAt: 'desc' },
+                    select: {
+                        content: true,
+                        createdAt: true
+                    }
+                },
                 _count: {
                     select: { followers: true },
                 }
             },
             orderBy: {
-                createdAt: 'desc',
+                createdAt: 'desc', 
             }
         })
         
@@ -282,17 +284,79 @@ export async function listUsers(req: Request, res: Response): Promise<Response> 
             imageUrl: user.imageUrl,
             createdAt: user.createdAt,
             followersCount: user._count.followers,
+            
+            isFollowing: followingIds.has(user.id),
+            
+            latestTweet: user.tweets[0] ? {
+                content: user.tweets[0].content,
+                createdAt: user.tweets[0].createdAt
+            } : null
         }))
 
         return res.status(200).json({
             success: true,
             data: mappedUsers,
+            meta: {
+                page,
+                limit,
+                total: mappedUsers.length
+            }
         })
+
     } catch (error) {
         console.error('Erro ao listar usuários:', error)
         return res.status(500).json({
             success: false,
             message: 'Erro interno do servidor ao listar usuários.',
+        })
+    }
+}
+
+//update user
+
+export async function updateUser(req: Request, res: Response): Promise<Response> {
+    const userId = req.user?.id
+    const { name, imageUrl } = req.body
+
+    if (!userId) {
+        return res.status(401).json({
+            success: false,
+            message: 'Usuário não autenticado.',
+        })
+    }
+
+    try {
+        const userExists = await prismaClient.user.findUnique({ where: { id: userId } })
+        
+        if (!userExists) {
+            return res.status(404).json({ success: false, message: 'Usuário não encontrado.' })
+        }
+
+        const updatedUser = await prismaClient.user.update({
+            where: { id: userId },
+            data: {
+                name,     
+                imageUrl, 
+            },
+            select: {
+                id: true,
+                name: true,
+                username: true,
+                imageUrl: true,
+            }
+        })
+
+        return res.status(200).json({
+            success: true,
+            message: 'Perfil atualizado com sucesso!',
+            data: updatedUser,
+        })
+
+    } catch (error) {
+        console.error('Erro ao atualizar usuário:', error)
+        return res.status(500).json({
+            success: false,
+            message: 'Erro interno do servidor ao atualizar perfil.',
         })
     }
 }
