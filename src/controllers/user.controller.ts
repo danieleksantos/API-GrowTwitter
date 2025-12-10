@@ -1,7 +1,7 @@
-
 import { Request, Response } from 'express'
 import { prismaClient } from '../database/prismaClient.js'
 
+// GET USER PROFILE
 export async function getUserProfile(req: Request, res: Response): Promise<Response> {
     const { username } = req.params
     const currentUserId = req.user?.id 
@@ -89,8 +89,8 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
             
             isFollowing: user.id !== currentUserId ? isFollowing : undefined, 
             
-            followersCount: user._count.followers, 
-            followingCount: user._count.following,
+            followersCount: user._count.following, 
+            followingCount: user._count.followers,
             
             tweetsCount: user._count.tweets,
             tweets: mappedTweets,
@@ -110,8 +110,7 @@ export async function getUserProfile(req: Request, res: Response): Promise<Respo
     }
 }
 
-// follow
-
+// FOLLOW USER
 export async function followUser(req: Request, res: Response): Promise<Response> {
     const followerId = req.user?.id
     const followingId = req.params.followingId
@@ -179,7 +178,7 @@ export async function followUser(req: Request, res: Response): Promise<Response>
     }
 }
 
-// unfollow
+//  UNFOLLOW USER
 export async function unfollowUser(req: Request, res: Response): Promise<Response> {
     const followerId = req.user?.id
     const followingId = req.params.followingId
@@ -229,7 +228,7 @@ export async function unfollowUser(req: Request, res: Response): Promise<Respons
     }
 }
 
-// list users
+// LIST USERS
 export async function listUsers(req: Request, res: Response): Promise<Response> {
     const currentUserId = req.user?.id
     
@@ -248,18 +247,21 @@ export async function listUsers(req: Request, res: Response): Promise<Response> 
             followingIds = new Set(myFollows.map(f => f.followingId))
         }
 
+        const whereCondition = {
+            ...(currentUserId ? { id: { not: currentUserId } } : {})
+        }
+
         const users = await prismaClient.user.findMany({
             take: limit,
             skip: skip,
-            where: {
-                ...(currentUserId ? { id: { not: currentUserId } } : {})
-            },
+            where: whereCondition,
             select: {
                 id: true,
                 name: true,
                 username: true,
                 imageUrl: true,
                 createdAt: true,
+                
                 tweets: {
                     take: 1,
                     orderBy: { createdAt: 'desc' },
@@ -268,13 +270,18 @@ export async function listUsers(req: Request, res: Response): Promise<Response> 
                         createdAt: true
                     }
                 },
+                
                 _count: {
-                    select: { followers: true },
+                    select: { following: true }, 
                 }
             },
             orderBy: {
                 createdAt: 'desc', 
             }
+        })
+
+        const totalUsers = await prismaClient.user.count({
+            where: whereCondition
         })
         
         const mappedUsers = users.map(user => ({
@@ -283,7 +290,8 @@ export async function listUsers(req: Request, res: Response): Promise<Response> 
             username: user.username,
             imageUrl: user.imageUrl,
             createdAt: user.createdAt,
-            followersCount: user._count.followers,
+            
+            followersCount: user._count.following, 
             
             isFollowing: followingIds.has(user.id),
             
@@ -299,7 +307,7 @@ export async function listUsers(req: Request, res: Response): Promise<Response> 
             meta: {
                 page,
                 limit,
-                total: mappedUsers.length
+                total: totalUsers 
             }
         })
 
@@ -312,8 +320,7 @@ export async function listUsers(req: Request, res: Response): Promise<Response> 
     }
 }
 
-//update user
-
+// UPDATE USER
 export async function updateUser(req: Request, res: Response): Promise<Response> {
     const userId = req.user?.id
     const { name, imageUrl } = req.body
