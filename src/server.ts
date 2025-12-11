@@ -8,7 +8,11 @@ import { tweetsRouter } from './routes/tweets.routes.js'
 const app = express()
 
 app.use(cors({
-  origin: process.env.FRONT_END_URL || 'http://localhost:5173', 
+  origin: [
+    'http://localhost:5173',              
+    'https://grow-twitter.vercel.app'    
+  ],
+  credentials: true 
 }))
 
 app.use(express.json())
