@@ -6,14 +6,13 @@ import 'dotenv/config'
 
 const SALT_ROUNDS = 10 
 
-
 export async function registerUser(req: Request, res: Response): Promise<Response> {
     const { name, username, password, imageUrl } = req.body
 
-    if (!name || !username || !password || !imageUrl) {
+    if (!name || !username || !password) {
         return res.status(400).json({
             success: false,
-            message: 'Todos os campos são obrigatórios: name, username, password, imageUrl.',
+            message: 'Os campos obrigatórios são: name, username e password.',
         })
     }
 
@@ -35,8 +34,8 @@ export async function registerUser(req: Request, res: Response): Promise<Respons
             data: {
                 name,
                 username,
-                password: hashedPassword, 
-                imageUrl,
+                password: hashedPassword,
+                ...(imageUrl && { imageUrl }),
             },
             select: {
                 id: true,
@@ -62,7 +61,6 @@ export async function registerUser(req: Request, res: Response): Promise<Respons
         })
     }
 }
-
 
 export async function loginUser(req: Request, res: Response): Promise<Response> {
     const { username, password } = req.body
