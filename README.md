@@ -1,5 +1,5 @@
 <h1 align="center">Growtwitter API 🐦</h1>
-<p align="center"><strong>API RESTful inspirada em funcionalidades principais do Twitter. Agora com suporte a Feed Global (Trends), Paginação e Edição de Perfil.</strong></p>
+<p align="center"><strong>API RESTful inspirada em funcionalidades principais do Twitter. Com suporte a Feed Global (Trends), Paginação e Edição de Perfil.</strong></p>
 
 <p align="center">
   💻 <strong>Repositório Frontend:</strong> 
