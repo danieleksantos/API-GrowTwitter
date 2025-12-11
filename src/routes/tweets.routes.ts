@@ -1,14 +1,13 @@
-
 import { Router } from 'express'
 import { authMiddleware } from '../middleware/authMiddleware.ts' 
-import { createTweet, getFeed, deleteTweet } from '../controllers/tweet.controller.ts'
+import { createTweet, listTweets, deleteTweet } from '../controllers/tweet.controller.ts'
 import { likeTweet, unlikeTweet } from '../controllers/like.controller.ts'
 import { createComment, listComments } from '../controllers/comment.controller.ts'
 
 const tweetsRouter = Router()
 
 tweetsRouter.post('/', authMiddleware, createTweet)
-tweetsRouter.get('/', authMiddleware, getFeed) 
+tweetsRouter.get('/', authMiddleware, listTweets) 
 tweetsRouter.post('/:tweetId/like', authMiddleware, likeTweet)
 tweetsRouter.delete('/:tweetId/like', authMiddleware, unlikeTweet)
 tweetsRouter.delete('/:tweetId', authMiddleware, deleteTweet)

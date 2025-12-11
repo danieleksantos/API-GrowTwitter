@@ -1,52 +1,32 @@
 import { Request, Response } from 'express'
 import { prismaClient } from '../database/prismaClient.js'
 
-
+// CREATE TWEET
 export async function createTweet(req: Request, res: Response): Promise<Response> {
     const { content } = req.body
     const userId = req.user?.id 
 
     if (!content || content.trim().length === 0) {
-        return res.status(400).json({
-            success: false,
-            message: 'O conteúdo do tweet não pode ser vazio.',
-        })
+        return res.status(400).json({ success: false, message: 'O conteúdo do tweet não pode ser vazio.' })
     }
     
     if (!userId) {
-        return res.status(401).json({
-            success: false,
-            message: 'ID do usuário não encontrado. Faça login novamente.',
-        })
+        return res.status(401).json({ success: false, message: 'ID do usuário não encontrado.' })
     }
 
     if (content.length > 280) {
-        return res.status(400).json({
-            success: false,
-            message: 'O tweet não pode ter mais de 280 caracteres.',
-        })
+        return res.status(400).json({ success: false, message: 'O tweet não pode ter mais de 280 caracteres.' })
     }
 
     try {
         const newTweet = await prismaClient.tweet.create({
-            data: {
-                content,
-                userId,
-            },
+            data: { content, userId },
             include: {
                 user: {
-                    select: {
-                        id: true,
-                        username: true,
-                        name: true,
-                        imageUrl: true,
-                    },
+                    select: { id: true, username: true, name: true, imageUrl: true },
                 },
                 _count: { 
-                    select: { 
-                        likes: true, 
-                        comments: true 
-                    } 
+                    select: { likes: true, comments: true } 
                 }
             },
         })
@@ -63,28 +43,24 @@ export async function createTweet(req: Request, res: Response): Promise<Response
         })
     } catch (error) {
         console.error('Erro ao criar tweet:', error)
-        return res.status(500).json({
-            success: false,
-            message: 'Erro interno do servidor ao criar o tweet.',
-        })
+        return res.status(500).json({ success: false, message: 'Erro interno do servidor.' })
     }
 }
 
-
-export async function getFeed(req: Request, res: Response): Promise<Response> {
+// --- LIST TWEETS 
+export async function listTweets(req: Request, res: Response): Promise<Response> {
     const currentUserId = req.user?.id 
-    const { username } = req.query as { username?: string }; 
+    
+    const { username, type, page } = req.query as { username?: string, type?: string, page?: string };
 
-    if (!currentUserId) {
-        return res.status(401).json({ message: "Usuário não autenticado." })
-    }
-
-    let tweetFindManyOptions: any = {}; 
-    let totalTweetsCount: number | undefined; 
+    const pageNumber = Number(page) || 1;
+    const take = 10;
+    const skip = (pageNumber - 1) * take;
 
     try {
+        let whereCondition: any = {}; 
+
         if (username) {
-            
             const targetUser = await prismaClient.user.findUnique({
                 where: { username },
                 select: { id: true },
@@ -93,15 +69,18 @@ export async function getFeed(req: Request, res: Response): Promise<Response> {
             if (!targetUser) {
                 return res.status(404).json({ success: false, message: "Usuário não encontrado." });
             }
+            whereCondition = { userId: targetUser.id };
+        } 
+        
+        else if (type === 'global') {
+            whereCondition = {}; 
+        } 
+        
+        else {
+            if (!currentUserId) {
+                return res.status(401).json({ message: "Login necessário para ver o feed." })
+            }
 
-            totalTweetsCount = await prismaClient.tweet.count({
-                where: { userId: targetUser.id },
-            });
-
-            tweetFindManyOptions.where = { userId: targetUser.id };
-            
-        } else {
-            
             const followingRelations = await prismaClient.follows.findMany({
                 where: { followerId: currentUserId },
                 select: { followingId: true },
@@ -110,90 +89,80 @@ export async function getFeed(req: Request, res: Response): Promise<Response> {
             const followedUserIds = followingRelations.map(f => f.followingId)
             const userIdsToInclude = [currentUserId, ...followedUserIds] 
 
-            tweetFindManyOptions.where = { userId: { in: userIdsToInclude } };
+            whereCondition = { userId: { in: userIdsToInclude } };
         }
 
-        const tweets: any[] = await prismaClient.tweet.findMany({
-            ...tweetFindManyOptions, 
+        const tweets = await prismaClient.tweet.findMany({
+            take,
+            skip,
+            where: whereCondition,
+            orderBy: { createdAt: 'desc' },
             include: {
                 user: {
                     select: { id: true, username: true, name: true, imageUrl: true },
                 },
                 likes: { 
-                    where: { userId: currentUserId },
+                    where: currentUserId ? { userId: currentUserId } : undefined,
                     select: { userId: true } 
                 },
                 _count: { 
                     select: { likes: true, comments: true } 
                 }
             },
-            orderBy: { createdAt: 'desc' },
         })
 
-        const tweetsWithLikeStatus = tweets.map((tweet: any) => { 
+        const formattedTweets = tweets.map((tweet: any) => { 
             const isLikedByMe = tweet.likes.length > 0;
-            
-            const { likes, ...restOfTweet } = tweet;
+            const { likes, _count, ...rest } = tweet;
 
             return {
-                ...restOfTweet,
+                ...rest,
                 isLikedByMe,
-                likesCount: restOfTweet._count.likes,
-                repliesCount: restOfTweet._count.comments,
-                _count: undefined, 
+                likesCount: _count.likes,
+                repliesCount: _count.comments,
             }
         })
 
         return res.status(200).json({
             success: true,
-            data: tweetsWithLikeStatus, 
-            ...(totalTweetsCount !== undefined && { totalTweets: totalTweetsCount }),
+            data: formattedTweets,
+            meta: {
+                page: pageNumber,
+                limit: take,
+            }
         })
+
     } catch (error) {
         console.error('Erro ao buscar tweets:', error)
-        return res.status(500).json({
-            success: false,
-            message: 'Erro interno do servidor ao carregar os tweets.',
-        })
+        return res.status(500).json({ success: false, message: 'Erro ao carregar tweets.' })
     }
 }
 
-
+// --- DELETE TWEET
 export async function deleteTweet(req: Request, res: Response): Promise<Response> {
     const userId = req.user?.id 
     const { tweetId } = req.params 
 
-    if (!userId) {
-        return res.status(401).json({ success: false, message: 'Usuário não autenticado.' })
-    }
+    if (!userId) return res.status(401).json({ success: false, message: 'Usuário não autenticado.' })
 
     try {
         const tweet = await prismaClient.tweet.findUnique({
             where: { id: tweetId },
-            select: { userId: true, id: true }
+            select: { userId: true }
         })
 
-        if (!tweet) {
-            return res.status(404).json({ success: false, message: 'Tweet não encontrado.' })
-        }
+        if (!tweet) return res.status(404).json({ success: false, message: 'Tweet não encontrado.' })
 
         if (tweet.userId !== userId) {
-            return res.status(403).json({ success: false, message: 'Você só pode deletar seus próprios tweets.' })
+            return res.status(403).json({ success: false, message: 'Proibido deletar tweet de outro usuário.' })
         }
         
         await prismaClient.tweet.delete({ where: { id: tweetId } })
 
-        return res.status(200).json({
-            success: true,
-            message: 'Tweet deletado com sucesso.',
-            data: { id: tweetId },
-        })
+        return res.status(200).json({ success: true, message: 'Tweet deletado.' })
 
     } catch (error) {
         console.error('Erro ao deletar tweet:', error)
-        return res.status(500).json({
-            success: false,
-            message: 'Erro interno do servidor ao deletar tweet.',
-        })
+        return res.status(500).json({ success: false, message: 'Erro interno.' })
     }
 }
