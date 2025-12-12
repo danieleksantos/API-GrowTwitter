@@ -7,7 +7,6 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Modelo User
 model User {
   id        String   @id @default(uuid()) 
   name      String                     
@@ -19,15 +18,22 @@ model User {
   
   tweets    Tweet[] 
   likes     Like[] 
-  
   comments  Comment[]
-  
-  // Relações Follows
-  following Follows[] @relation("FollowsBeingFollowed") 
-  followers Follows[] @relation("FollowsFollowedBy") 
+
+  following Follows[] @relation("follower") 
+  followers Follows[] @relation("following")
 }
 
-// Modelo Tweet
+model Follows {
+  followerId  String
+  followingId String
+  
+  follower    User   @relation("follower", fields: [followerId], references: [id])
+  following   User   @relation("following", fields: [followingId], references: [id])
+
+  @@id([followerId, followingId])
+}
+
 model Tweet {
   id        String   @id @default(uuid())
   content   String   @db.VarChar(280) 
@@ -37,19 +43,9 @@ model Tweet {
   user      User     @relation(fields: [userId], references: [id])
 
   likes     Like[] 
-  
   comments  Comment[]
 }
 
-model Follows {
-  followerId String
-  followingId String 
-  
-  follower User @relation("FollowsFollowedBy", fields: [followerId], references: [id])
-  following User @relation("FollowsBeingFollowed", fields: [followingId], references: [id])
-
-  @@id([followerId, followingId])
-}
 
 model Like {
   userId    String

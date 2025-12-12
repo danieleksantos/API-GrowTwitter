@@ -1,369 +1,122 @@
-import { Request, Response } from 'express'
-import { prismaClient } from '../database/prismaClient.js'
+import { Request, Response } from 'express';
+import { UserService } from '../services/user.service.js';
+import { updateUserSchema, listUsersSchema } from '../dtos/user.dto.js';
 
-// GET USER PROFILE
+const userService = new UserService();
+
 export async function getUserProfile(req: Request, res: Response): Promise<Response> {
-    const { username } = req.params
-    const currentUserId = req.user?.id 
+    const { username } = req.params;
+    const currentUserId = req.user?.id;
 
     try {
-        const user = await prismaClient.user.findUnique({
-            where: { username },
-            select: {
-                id: true,
-                name: true,
-                username: true,
-                imageUrl: true,
-                createdAt: true,
-                updatedAt: true,
-                
-                _count: {
-                    select: {
-                        followers: true, 
-                        following: true, 
-                        tweets: true, 
-                    },
-                },
-                
-                tweets: {
-                    orderBy: { createdAt: 'desc' },
-                    include: {
-                        user: {
-                            select: {
-                                id: true, username: true, name: true, imageUrl: true,
-                            },
-                        },
-                        likes: { 
-                            where: { userId: currentUserId },
-                            select: { userId: true } 
-                        },
-                        _count: { 
-                            select: { likes: true, comments: true } 
-                        }
-                    },
-                },
-            },
-        })
+        const profile = await userService.getProfile(username, currentUserId);
+        return res.status(200).json({ success: true, data: profile });
 
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'Usuário não encontrado.',
-            })
+    } catch (error: any) {
+        if (error.message === 'USER_NOT_FOUND') {
+            return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
         }
-        
-        let isFollowing = false;
-        
-        if (currentUserId && user.id !== currentUserId) {
-              const followRecord = await prismaClient.follows.findUnique({
-                  where: {
-                      followerId_followingId: {
-                          followerId: currentUserId,
-                          followingId: user.id, 
-                      },
-                  },
-              });
-              isFollowing = !!followRecord; 
-        }
-
-        const mappedTweets = user.tweets.map(tweet => {
-            const isLikedByMe = tweet.likes.length > 0;
-            const { likes, _count, ...restOfTweet } = tweet as any; 
-
-            return {
-                ...restOfTweet,
-                isLikedByMe,
-                likesCount: _count.likes,
-                repliesCount: _count.comments,
-                _count: undefined,
-            }
-        })
-
-        const responseData = {
-            id: user.id,
-            name: user.name,
-            username: user.username,
-            imageUrl: user.imageUrl,
-            createdAt: user.createdAt,
-            updatedAt: user.updatedAt,
-            
-            isFollowing: user.id !== currentUserId ? isFollowing : undefined, 
-            
-            followersCount: user._count.following, 
-            followingCount: user._count.followers,
-            
-            tweetsCount: user._count.tweets,
-            tweets: mappedTweets,
-        }
-
-        return res.status(200).json({
-            success: true,
-            data: responseData,
-        })
-
-    } catch (error) {
-        console.error('Erro ao buscar perfil de usuário:', error)
-        return res.status(500).json({
-            success: false,
-            message: 'Erro interno do servidor ao buscar o perfil.',
-        })
+        console.error('Erro ao buscar perfil:', error);
+        return res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
     }
 }
 
-// FOLLOW USER
 export async function followUser(req: Request, res: Response): Promise<Response> {
-    const followerId = req.user?.id
-    const followingId = req.params.followingId
+    const followerId = req.user?.id;
+    const { followingId } = req.params;
 
-    if (!followerId) {
-        return res.status(401).json({
-            success: false,
-            message: 'Usuário não autenticado.',
-        })
-    }
-    
-    if (!followingId || followerId === followingId) {
-        return res.status(400).json({
-            success: false,
-            message: 'ID do usuário alvo inválido ou tentativa de seguir a si mesmo.',
-        })
-    }
+    if (!followerId) return res.status(401).json({ success: false, message: 'Usuário não autenticado.' });
+    if (!followingId) return res.status(400).json({ success: false, message: 'ID alvo inválido.' });
 
     try {
-        const targetUser = await prismaClient.user.findUnique({
-             where: { id: followingId }
-        })
+        const follow = await userService.follow(followerId, followingId);
+        return res.status(201).json({ success: true, message: 'Usuário seguido com sucesso.', data: follow });
 
-        if (!targetUser) {
-             return res.status(404).json({
-                 success: false,
-                 message: 'Usuário que você está tentando seguir não existe.',
-             })
+    } catch (error: any) {
+        if (error.message === 'SELF_FOLLOW') {
+            return res.status(400).json({ success: false, message: 'Você não pode seguir a si mesmo.' });
         }
-
-        const existingFollow = await prismaClient.follows.findUnique({
-            where: {
-                followerId_followingId: {
-                    followerId,
-                    followingId,
-                },
-            },
-        })
-
-        if (existingFollow) {
-            return res.status(409).json({
-                success: false,
-                message: 'Você já segue este usuário.',
-            })
+        if (error.message === 'USER_NOT_FOUND') {
+            return res.status(404).json({ success: false, message: 'Usuário alvo não encontrado.' });
+        }
+        if (error.message === 'ALREADY_FOLLOWING') {
+            return res.status(409).json({ success: false, message: 'Você já segue este usuário.' });
         }
         
-        const follow = await prismaClient.follows.create({
-            data: {
-                followerId,
-                followingId,
-            },
-        })
-
-        return res.status(201).json({
-            success: true,
-            message: 'Usuário seguido com sucesso.',
-            data: follow,
-        })
-    } catch (error) {
-        console.error('Erro ao seguir usuário:', error)
-        return res.status(500).json({
-            success: false,
-            message: 'Erro interno do servidor ao tentar seguir usuário.',
-        })
+        console.error('Erro ao seguir:', error);
+        return res.status(500).json({ success: false, message: 'Erro interno.' });
     }
 }
 
-//  UNFOLLOW USER
 export async function unfollowUser(req: Request, res: Response): Promise<Response> {
-    const followerId = req.user?.id
-    const followingId = req.params.followingId
+    const followerId = req.user?.id;
+    const { followingId } = req.params;
 
-    if (!followerId) {
-        return res.status(401).json({
-            success: false,
-            message: 'Usuário não autenticado.',
-        })
-    }
-
-    if (!followingId) {
-        return res.status(400).json({
-            success: false,
-            message: 'ID do usuário alvo inválido.',
-        })
-    }
+    if (!followerId) return res.status(401).json({ success: false, message: 'Usuário não autenticado.' });
+    if (!followingId) return res.status(400).json({ success: false, message: 'ID alvo inválido.' });
 
     try {
-        const unfollow = await prismaClient.follows.delete({
-            where: {
-                followerId_followingId: {
-                    followerId,
-                    followingId,
-                },
-            },
-        })
+        await userService.unfollow(followerId, followingId);
+        return res.status(200).json({ success: true, message: 'Você deixou de seguir o usuário.' });
 
-        return res.status(200).json({
-            success: true,
-            message: 'Você deixou de seguir o usuário.',
-            data: unfollow,
-        })
-    } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'P2025') {
-            return res.status(404).json({
-                success: false,
-                message: 'Relação de follow não encontrada (você não segue este usuário).',
-            })
+    } catch (error: any) {
+        if (error.message === 'NOT_FOLLOWING') {
+            return res.status(404).json({ success: false, message: 'Você não segue este usuário.' });
         }
-        
-        console.error('Erro ao deixar de seguir usuário:', error)
-        return res.status(500).json({
-            success: false,
-            message: 'Erro interno do servidor ao tentar deixar de seguir usuário.',
-        })
+        console.error('Erro ao deixar de seguir:', error);
+        return res.status(500).json({ success: false, message: 'Erro interno.' });
     }
 }
 
-// LIST USERS
 export async function listUsers(req: Request, res: Response): Promise<Response> {
-    const currentUserId = req.user?.id
+    const currentUserId = req.user?.id;
     
-    const page = Number(req.query.page) || 1
-    const limit = 8
-    const skip = (page - 1) * limit
+    const validation = listUsersSchema.safeParse(req.query);
+    if (!validation.success) {
+        return res.status(400).json({ success: false, message: 'Paginação inválida.' });
+    }
+
+    const { page } = validation.data;
 
     try {
-        let followingIds = new Set<string>()
-
-        if (currentUserId) {
-            const myFollows = await prismaClient.follows.findMany({
-                where: { followerId: currentUserId },
-                select: { followingId: true }
-            })
-            followingIds = new Set(myFollows.map(f => f.followingId))
-        }
-
-        const whereCondition = {
-            ...(currentUserId ? { id: { not: currentUserId } } : {})
-        }
-
-        const users = await prismaClient.user.findMany({
-            take: limit,
-            skip: skip,
-            where: whereCondition,
-            select: {
-                id: true,
-                name: true,
-                username: true,
-                imageUrl: true,
-                createdAt: true,
-                
-                tweets: {
-                    take: 1,
-                    orderBy: { createdAt: 'desc' },
-                    select: {
-                        content: true,
-                        createdAt: true
-                    }
-                },
-                
-                _count: {
-                    select: { following: true }, 
-                }
-            },
-            orderBy: {
-                createdAt: 'desc', 
-            }
-        })
-
-        const totalUsers = await prismaClient.user.count({
-            where: whereCondition
-        })
-        
-        const mappedUsers = users.map(user => ({
-            id: user.id,
-            name: user.name,
-            username: user.username,
-            imageUrl: user.imageUrl,
-            createdAt: user.createdAt,
-            
-            followersCount: user._count.following, 
-            
-            isFollowing: followingIds.has(user.id),
-            
-            latestTweet: user.tweets[0] ? {
-                content: user.tweets[0].content,
-                createdAt: user.tweets[0].createdAt
-            } : null
-        }))
-
-        return res.status(200).json({
-            success: true,
-            data: mappedUsers,
-            meta: {
-                page,
-                limit,
-                total: totalUsers 
-            }
-        })
+        const result = await userService.list(currentUserId, page);
+        return res.status(200).json({ success: true, data: result.data, meta: result.meta });
 
     } catch (error) {
-        console.error('Erro ao listar usuários:', error)
-        return res.status(500).json({
-            success: false,
-            message: 'Erro interno do servidor ao listar usuários.',
-        })
+        console.error('Erro ao listar usuários:', error);
+        return res.status(500).json({ success: false, message: 'Erro interno.' });
     }
 }
 
-// UPDATE USER
 export async function updateUser(req: Request, res: Response): Promise<Response> {
-    const userId = req.user?.id
-    const { name, imageUrl } = req.body
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, message: 'Usuário não autenticado.' });
 
-    if (!userId) {
-        return res.status(401).json({
-            success: false,
-            message: 'Usuário não autenticado.',
-        })
+    const validation = updateUserSchema.safeParse(req.body);
+    if (!validation.success) {
+        return res.status(400).json({ 
+            success: false, 
+            message: validation.error.issues[0].message 
+        });
     }
 
     try {
-        const userExists = await prismaClient.user.findUnique({ where: { id: userId } })
+        const updatedUser = await userService.update({ 
+            userId, 
+            ...validation.data 
+        });
         
-        if (!userExists) {
-            return res.status(404).json({ success: false, message: 'Usuário não encontrado.' })
+        return res.status(200).json({ 
+            success: true, 
+            message: 'Perfil atualizado com sucesso!', 
+            data: updatedUser 
+        });
+
+    } catch (error: any) {
+        if (error.message === 'USER_NOT_FOUND') {
+            return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
         }
-
-        const updatedUser = await prismaClient.user.update({
-            where: { id: userId },
-            data: {
-                name,     
-                imageUrl, 
-            },
-            select: {
-                id: true,
-                name: true,
-                username: true,
-                imageUrl: true,
-            }
-        })
-
-        return res.status(200).json({
-            success: true,
-            message: 'Perfil atualizado com sucesso!',
-            data: updatedUser,
-        })
-
-    } catch (error) {
-        console.error('Erro ao atualizar usuário:', error)
-        return res.status(500).json({
-            success: false,
-            message: 'Erro interno do servidor ao atualizar perfil.',
-        })
+        console.error('Erro ao atualizar usuário:', error);
+        return res.status(500).json({ success: false, message: 'Erro interno.' });
     }
 }

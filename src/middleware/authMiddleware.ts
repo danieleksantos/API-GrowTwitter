@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
-import 'dotenv/config'
 
 interface JwtPayload {
     id: string;
@@ -15,8 +14,7 @@ declare global {
   }
 }
 
-
-export function authMiddleware(req: Request, res: Response, next: NextFunction): Response | void {
+export function authMiddleware(req: Request, res: Response, next: NextFunction) {
     const authHeader = req.headers.authorization
 
     if (!authHeader) {
@@ -26,12 +24,21 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
         })
     }
 
-    const token = authHeader.split(' ')[1]
+    const parts = authHeader.split(' ')
 
-    if (!token) {
+    if (parts.length !== 2) {
         return res.status(401).json({
             success: false,
-            message: 'Formato de token inválido.',
+            message: 'Erro no token. Formato esperado: Bearer <token>',
+        })
+    }
+
+    const [scheme, token] = parts
+
+    if (!/^Bearer$/i.test(scheme)) {
+        return res.status(401).json({
+            success: false,
+            message: 'Token malformado. O esquema deve ser Bearer.',
         })
     }
 
@@ -39,7 +46,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
         const jwtSecret = process.env.JWT_SECRET
 
         if (!jwtSecret) {
-            console.error("JWT_SECRET não configurado em .env")
+            console.error("ERRO CRÍTICO: JWT_SECRET não configurado.")
             return res.status(500).json({ message: "Erro de configuração do servidor." })
         }
         
@@ -47,7 +54,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 
         req.user = decoded 
 
-        next()
+        return next()
     } catch (error) {
         return res.status(401).json({
             success: false,
