@@ -15,9 +15,8 @@ export class UserService {
                 id: true, name: true, username: true, imageUrl: true, createdAt: true, updatedAt: true,
                 _count: {
                     select: { 
-                        // AGORA A LÓGICA É DIRETA E LIMPA:
-                        followers: true, // Conta quem segue o usuário
-                        following: true, // Conta quem o usuário segue
+                        followers: true,
+                        following: true,
                         tweets: true 
                     },
                 },
@@ -44,7 +43,6 @@ export class UserService {
         let isFollowing = false;
         
         if (currentUserId && user.id !== currentUserId) {
-            // Verifica se EU (followerId) estou na lista de seguidores DELE (followingId)
             const followRecord = await prismaClient.follows.findUnique({
                 where: {
                     followerId_followingId: {
@@ -77,7 +75,6 @@ export class UserService {
             
             isFollowing: user.id !== currentUserId ? isFollowing : undefined,
             
-            // MAPEAMENTO DIRETO (Sem hacks):
             followersCount: user._count.followers, 
             followingCount: user._count.following,
             
@@ -92,7 +89,6 @@ export class UserService {
 
         let followingIds = new Set<string>();
         if (currentUserId) {
-            // Busco na relação 'following' (quem eu sigo)
             const myFollows = await prismaClient.follows.findMany({
                 where: { followerId: currentUserId },
                 select: { followingId: true }
@@ -118,7 +114,6 @@ export class UserService {
                         select: { content: true, createdAt: true }
                     },
                     _count: { 
-                        // Queremos saber a popularidade, então contamos os SEGUIDORES
                         select: { followers: true } 
                     } 
                 },
@@ -133,7 +128,6 @@ export class UserService {
             imageUrl: user.imageUrl,
             createdAt: user.createdAt,
             
-            // Mapeamento direto
             followersCount: user._count.followers, 
             
             isFollowing: followingIds.has(user.id),

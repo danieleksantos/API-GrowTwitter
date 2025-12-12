@@ -1,4 +1,4 @@
-import { prismaClient } from '../database/prismaClient.js'; // Ajuste a extensão .js se necessário no seu tsconfig
+import { prismaClient } from '../database/prismaClient.js';
 
 interface CreateTweetParams {
     userId: string;
@@ -27,12 +27,11 @@ export class TweetService {
             },
         });
 
-        // Formatação para manter compatibilidade com o Frontend
         return {
             ...newTweet,
             likesCount: newTweet._count.likes,
             repliesCount: newTweet._count.comments,
-            isLikedByMe: false, // Acabou de criar, não tem like
+            isLikedByMe: false,
         };
     }
 
@@ -41,7 +40,6 @@ export class TweetService {
         const skip = (page - 1) * take;
         let whereCondition: any = {};
 
-        // Regra 1: Filtrar por usuário específico (Perfil)
         if (username) {
             const targetUser = await prismaClient.user.findUnique({
                 where: { username },
@@ -51,11 +49,9 @@ export class TweetService {
             if (!targetUser) throw new Error('USER_NOT_FOUND');
             whereCondition = { userId: targetUser.id };
         } 
-        // Regra 2: Feed Global
         else if (type === 'global') {
             whereCondition = {};
         } 
-        // Regra 3: Feed "Seguindo" (Padrão)
         else {
             if (!currentUserId) throw new Error('UNAUTHORIZED');
 
@@ -89,10 +85,8 @@ export class TweetService {
             },
         });
 
-        // Mapeamento dos dados
         const formattedTweets = tweets.map((tweet) => {
             const isLikedByMe = tweet.likes.length > 0;
-            // Removemos 'likes' e '_count' do objeto final para ficar limpo, como no original
             const { likes, _count, ...rest } = tweet;
 
             return {
@@ -105,7 +99,7 @@ export class TweetService {
 
         return {
             data: formattedTweets,
-            meta: { page, limit: take } // Adicionei total se quiser no futuro
+            meta: { page, limit: take }
         };
     }
 

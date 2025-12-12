@@ -9,7 +9,6 @@ interface CreateCommentParams {
 export class CommentService {
     
     async create({ userId, tweetId, content }: CreateCommentParams) {
-        // 1. Verificar se o tweet pai existe
         const targetTweet = await prismaClient.tweet.findUnique({ 
             where: { id: tweetId } 
         });
@@ -18,7 +17,6 @@ export class CommentService {
             throw new Error('TWEET_NOT_FOUND');
         }
 
-        // 2. Criar comentário
         const newComment = await prismaClient.comment.create({
             data: {
                 userId,
@@ -41,8 +39,6 @@ export class CommentService {
     }
 
     async list(tweetId: string) {
-        // A listagem de comentários não costuma dar 404 se o tweet não existe, 
-        // apenas retorna array vazio (comportamento padrão REST para coleções)
         const comments = await prismaClient.comment.findMany({
             where: { tweetId },
             orderBy: { createdAt: 'asc' }, 
