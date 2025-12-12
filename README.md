@@ -1,5 +1,11 @@
 <h1 align="center">Growtwitter API 🐦</h1>
-<p align="center"><strong>API RESTful inspirada em funcionalidades principais do Twitter. Com suporte a Feed Global (Trends), Paginação e Edição de Perfil.</strong></p>
+<p align="center"><strong>API RESTful robusta e escalável, desenvolvida com Clean Code e Arquitetura em Camadas (Service Pattern).</strong></p>
+<p align="center">Com suporte a Feed Global, Trends, Paginação, Sistema de Follow e Validação de Dados rigorosa.</p>
+
+<p align="center">
+  🚀 <strong>Acesse o projeto online:</strong><br>
+  <a href="https://grow-twitter.vercel.app/" target="_blank">https://grow-twitter.vercel.app/</a>
+</p>
 
 <p align="center">
   💻 <strong>Repositório Frontend:</strong> 
@@ -11,16 +17,19 @@
   <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
   <img src="https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white" />
   <img src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white" />
+  <img src="https://img.shields.io/badge/Zod-3E67B1?style=for-the-badge&logo=zod&logoColor=white" />
 </p>
 
 <hr />
 
-<h2>Tecnologias Utilizadas</h2>
+<h2>Tecnologias e Arquitetura</h2>
 <ul>
   <li><strong>Node.js & Express</strong></li>
   <li><strong>TypeScript</strong></li>
   <li><strong>Prisma ORM</strong></li>
   <li><strong>PostgreSQL (Neon DB)</strong></li>
+  <li><strong>Zod</strong> (Validação e DTOs)</li>
+  <li><strong>Service Layer Pattern</strong> (Arquitetura em Camadas)</li>
   <li><strong>JWT</strong> & <strong>bcrypt</strong> (Autenticação)</li>
 </ul>
 
@@ -38,8 +47,8 @@ npm install
 <h3>2. Configurar <code>.env</code></h3>
 <pre>
 <code>DATABASE_URL="postgresql://[USUARIO]:[SENHA]@[HOST]/[BANCO]?schema=public"
-JWT_SECRET="sua_chave_secreta_segura"
-PORT=3333
+JWT_SECRET="sua_chave_secreta_super_segura"
+PORT=3000
 </code>
 </pre>
 
@@ -52,7 +61,7 @@ PORT=3333
 <pre>
 <code>npm run dev</code>
 </pre>
-<p>Servidor disponível em <code>http://localhost:3333</code>.</p>
+<p>Servidor disponível em <code>http://localhost:3000</code>.</p>
 
 <hr />
 
@@ -76,7 +85,7 @@ PORT=3333
 <h3>Usuários (/users)</h3>
 <table>
   <tr><th>Método</th><th>Endpoint</th><th>Descrição</th><th>Auth</th></tr>
-  <tr><td>GET</td><td>/users?page=1</td><td>Lista todos os usuários (Explorar)</td><td>Não</td></tr>
+  <tr><td>GET</td><td>/users?page=1</td><td>Lista todos os usuários (Explorar)</td><td>Sim</td></tr>
   <tr><td>GET</td><td>/users/:username</td><td>Dados do perfil e contadores</td><td>Sim</td></tr>
   <tr><td>PUT</td><td>/users</td><td>Atualiza nome e avatar do usuário logado</td><td>Sim</td></tr>
   <tr><td>POST</td><td>/users/:id/follow</td><td>Seguir usuário</td><td>Sim</td></tr>
@@ -104,4 +113,4 @@ PORT=3333
 </table>
 
 <hr />
-<p align="center">Desenvolvido no desafio Growtwitter 🚀</p>
+<p align="center">Desenvolvido com 💙 no desafio Growtwitter 🚀</p>
